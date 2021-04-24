@@ -108,22 +108,42 @@ class MiniGraphCard extends LitElement {
 
     if (!this.Graph || entitiesChanged) {
       if (this._hass) this.hass = this._hass;
-      this.Graph = this.config.entities.map(
-        entity => new Graph(
-          500,
-          this.config.height,
-          [this.config.show.fill ? 0 : this.config.line_width, this.config.line_width],
-          this.config.hours_to_show,
-          this.config.points_per_hour,
-          entity.aggregate_func || this.config.aggregate_func,
-          this.config.group_by,
-          getFirstDefinedItem(
-            entity.smoothing,
-            this.config.smoothing,
-            !entity.entity.startsWith('binary_sensor.'), // turn off for binary sensor by default
-          ),
-          this.config.logarithmic,
-        ),
+      this.Graph = this.config.entities.reduce(
+        (graphs, entity) => {
+          let previousGraph;
+          if (this.config.show.stack) {
+            const isSecondary = entity.y_axis === 'secondary';
+            const previousGraphIndex = graphs.slice().reverse().findIndex(({ y_axis }) => {
+              if (isSecondary) {
+                return y_axis === 'secondary';
+              }
+
+              return y_axis !== 'secondary';
+            });
+
+            previousGraph = previousGraphIndex !== undefined
+              && graphs[graphs.length - 1 - previousGraphIndex];
+          }
+
+          const graph = new Graph(
+            500,
+            this.config.height,
+            [this.config.show.fill ? 0 : this.config.line_width, this.config.line_width],
+            this.config.hours_to_show,
+            this.config.points_per_hour,
+            entity.aggregate_func || this.config.aggregate_func,
+            this.config.group_by,
+            getFirstDefinedItem(
+              entity.smoothing,
+              this.config.smoothing,
+              !entity.entity.startsWith('binary_sensor.'), // turn off for binary sensor by default
+            ),
+            this.config.logarithmic,
+            previousGraph,
+          );
+
+          return graphs.concat(graph);
+        }, [],
       );
     }
   }
@@ -749,19 +769,27 @@ class MiniGraphCard extends LitElement {
 
     if (config.show.graph) {
       let graphPos = 0;
+      const numVisible = config.show.graph === 'bar' && config.show.stack
+        ? (config.entities.some(({ y_axis }) => y_axis === 'secondary') && 1 || 0) + (config.entities.some(({ y_axis }) => y_axis !== 'secondary') && 1 || 0)
+        : this.visibleEntities.length;
+
       this.entity.forEach((entity, i) => {
         if (!entity || this.Graph[i].coords.length === 0) return;
         const bound = config.entities[i].y_axis === 'secondary' ? this.boundSecondary : this.bound;
         [this.Graph[i].min, this.Graph[i].max] = [bound[0], bound[1]];
         if (config.show.graph === 'bar') {
-          const numVisible = this.visibleEntities.length;
+          graphPos = config.show.stack ? (config.entities[i].y_axis === 'secondary' ? 1 : 0) : graphPos + 1;
           this.bar[i] = this.Graph[i].getBars(graphPos, numVisible, config.bar_spacing);
-          graphPos += 1;
         } else {
           const line = this.Graph[i].getPath();
           if (config.entities[i].show_line !== false) this.line[i] = line;
           if (config.show.fill
-            && config.entities[i].show_fill !== false) this.fill[i] = this.Graph[i].getFill(line);
+            && config.entities[i].show_fill !== false) {
+            const lineBelowIndex = this.Graph[i].previousGraph
+              && this.Graph.lastIndexOf(this.Graph[i].previousGraph);
+            const lineBelow = this.Graph[i].previousGraph && this.line[lineBelowIndex];
+            this.fill[i] = this.Graph[i].getFill(line, lineBelow);
+          }
           if (config.show.points && (config.entities[i].show_points !== false)) {
             this.points[i] = this.Graph[i].getPoints();
           }

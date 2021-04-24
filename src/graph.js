@@ -2,10 +2,12 @@ import { interpolateColor } from './utils';
 import {
   X, Y, V,
   ONE_HOUR,
+  OV,
+  H,
 } from './const';
 
 export default class Graph {
-  constructor(width, height, margin, hours = 24, points = 1, aggregateFuncName = 'avg', groupBy = 'interval', smoothing = true, logarithmic = false) {
+  constructor(width, height, margin, hours = 24, points = 1, aggregateFuncName = 'avg', groupBy = 'interval', smoothing = true, logarithmic = false, previousGraph = null) {
     const aggregateFuncMap = {
       avg: this._average,
       median: this._median,
@@ -32,6 +34,7 @@ export default class Graph {
     this._logarithmic = logarithmic;
     this._groupBy = groupBy;
     this._endTime = 0;
+    this.previousGraph = previousGraph;
   }
 
   get max() { return this._max; }
@@ -77,6 +80,7 @@ export default class Graph {
   }
 
   _calcPoints(history) {
+    const { previousGraph } = this;
     const coords = [];
     let xRatio = this.width / (this.hours * this.points - 1);
     xRatio = Number.isFinite(xRatio) ? xRatio : this.width;
@@ -87,7 +91,11 @@ export default class Graph {
       const x = xRatio * i + this.margin[X];
       if (item)
         last = [this._calcPoint(item), this._lastValue(item)];
-      return coords.push([x, 0, item ? last[0] : last[1]]);
+
+      const value = item ? last[0] : last[1];
+      const stackedValue = previousGraph && previousGraph.coords[i][V] || 0;
+
+      return coords.push([x, 0, stackedValue + value, value]);
     };
 
     for (let i = 0; i < history.length; i += 1)
@@ -102,10 +110,13 @@ export default class Graph {
     const min = this._logarithmic ? Math.log10(Math.max(1, this.min)) : this.min;
 
     const yRatio = ((max - min) / this.height) || 1;
+
     const coords2 = coords.map((coord) => {
       const val = this._logarithmic ? Math.log10(Math.max(1, coord[V])) : coord[V];
+      const oVal = this._logarithmic ? Math.log10(Math.max(1, coord[OV])) : coord[OV];
       const coordY = this.height - ((val - min) / yRatio) + this.margin[Y] * 2;
-      return [coord[X], coordY, coord[V]];
+      const height = this.height - ((oVal - min) / yRatio) + this.margin[Y] * 2;
+      return [coord[X], coordY, coord[V], coord[OV], height];
     });
 
     return coords2;
@@ -123,7 +134,7 @@ export default class Graph {
     const coords2 = coords.map((point, i) => {
       next = point;
       Z = this._smoothing ? this._midPoint(last[X], last[Y], next[X], next[Y]) : next;
-      const sum = this._smoothing ? (next[V] + last[V]) / 2 : next[V];
+      const sum = this._smoothing ? (next[OV] + last[OV]) / 2 : next[OV];
       last = next;
       return [Z[X], Z[Y], sum, i + 1];
     });
@@ -184,11 +195,15 @@ export default class Graph {
     });
   }
 
-  getFill(path) {
+  getFill(path, pathBelow) {
     const height = this.height + this.margin[Y] * 4;
     let fill = path;
-    fill += ` L ${this.width - this.margin[X] * 2}, ${height}`;
-    fill += ` L ${this.coords[0][X]}, ${height} z`;
+    if (pathBelow) {
+      fill += `Q${pathBelow.replace(/M/, '').split('Q').reverse().join('Q')}`;
+    } else {
+      fill += ` L ${this.width - this.margin[X] * 2}, ${height}`;
+      fill += ` L ${this.coords[0][X]}, ${height} z`;
+    }
     return fill;
   }
 
@@ -198,9 +213,10 @@ export default class Graph {
     return coords.map((coord, i) => ({
       x: (xRatio * i * total) + (xRatio * position) + spacing,
       y: coord[Y],
-      height: this.height - coord[Y] + this.margin[Y] * 4,
+      height: this.height - coord[H]
+        + (this.previousGraph ? this.margin[Y] * 2 : this.margin[Y] * 4),
       width: xRatio - spacing,
-      value: coord[V],
+      value: coord[OV],
     }));
   }
 

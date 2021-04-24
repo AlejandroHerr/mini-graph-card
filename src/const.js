@@ -43,11 +43,14 @@ const DEFAULT_SHOW = {
   legend: true,
   fill: true,
   points: 'hover',
+  stack: false,
 };
 
 const X = 0;
 const Y = 1;
 const V = 2;
+const OV = 3;
+const H = 4;
 const ONE_HOUR = 1000 * 3600;
 
 export {
@@ -62,5 +65,7 @@ export {
   X,
   Y,
   V,
+  OV,
+  H,
   ONE_HOUR,
 };
