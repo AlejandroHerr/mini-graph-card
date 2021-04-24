@@ -163,6 +163,7 @@ All properties are optional.
 | labels_secondary | `hover` | `true` / `false` / `hover` | Display secondary Y-axis labels.
 | name_adaptive_color | `false` | `true` / `false` | Make the name color adapt with the primary entity color.
 | icon_adaptive_color | `false` | `true` / `false` | Make the icon color adapt with the primary entity color.
+| stack | `false` | `true` / `false` | Display the lines/bars stacked (it stacks each y-axis separately).
 
 #### Line color object
 See [dynamic line color](#dynamic-line-color) for example usage.
